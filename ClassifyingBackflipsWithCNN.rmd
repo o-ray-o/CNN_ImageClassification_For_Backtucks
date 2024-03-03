@@ -1,0 +1,322 @@
+---
+title: "Image Classification"
+author: "GOH RAY FONG"
+date: '2022-04-18'
+output: 
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages Required
+```{r}
+#install.packages("vembedr")
+library("vembedr")
+library(EBImage)
+library(keras)
+library(foreach)
+#install.packages("hdf5r")
+library(hdf5r)
+```
+
+
+# Is this a backflip?
+
+## Context of project
+
+I come from a team, The Hype Tribe and we teach an extreme sport called Tricking. By far the most popular move that we teach is something called a backflip.
+
+
+
+This is what a backflip looks like:
+```{r}
+embed_youtube(id="https://youtube.com/shorts/T4VcBL279XY")
+
+```
+
+## Context
+Experienced coaches understand causal relationship in movement patterns that results in a good backflip. However, inexperienced coaches will not be able to identify causal relationships between movements, and will result in a one step forward, two step back problem ( good coaches teach correct technique, but inexperienced coaches will spoil them)
+
+
+So let's all be experienced for a quick while.
+
+For example:
+We can see from this picture that the angle between the heel and the butt is approximately 90 degrees, and angle between knee and chest is slightly less than 90 degrees. It is our hypothesis that this position is ideal as it minimises knee flexion and maximises hip and trunk flexion.  
+
+```{r}
+
+setwd('/Users/Rays/FinalProjectSML/images')
+idealangles<-readImage("backtuckidealangles.jpeg")
+display(idealangles)
+```
+
+So what happens if we violate this pattern of angles? 
+
+Let's take a look at this video
+```{r}
+embed_youtube(id="https://youtube.com/shorts/32Us5LbQ6cs")
+```
+
+We can see that when you maximise the angle between your knees and your chest, the flip becomes really slow.
+```{r}
+setwd('/Users/Rays/FinalProjectSML/images')
+notidealangles<-readImage("backtucknotidealangles.jpeg")
+display(notidealangles)
+```
+
+## Problem to solve:
+
+Now that you are all experts in teaching backflip, inexperienced coaches may not be as fortunate to understand the nuances in techniques and may not even believe in our reasonings. 
+
+So we hope to turn to Machine Learning to validate our hypothesis, and ideally someone could input a video and get a critique on the technique and also how to improve the technique.
+
+Ideally, this is how the algorithm to work. Someone should be able to input their video into the system, and we will use CNN to establish key frames which will be fed into a Recurrent Neural Network. The RNN will give weights or scores to movement around joints based on the angles between joints. The score will be fed into an NLP algoritm which proposes how to improve technique and strengthening exercises. 
+
+But this is the end state. I'll actually be working on it, thanks for teaching a wonderful course prof! 
+```{r}
+setwd('/Users/Rays/FinalProjectSML/images')
+eyedeafzero<-readImage("idef0?.jpg")
+display(eyedeafzero)
+```
+
+# Start of the Backflip Feedback Algorithm:
+To start on this project, I have to train the algorithm to first be able to distinguish between 2 types of backflips: a backtuck and a layout. 
+
+I would employ Convolutional Neural Network to classify between a backtuck and a layout. 
+
+As we've seen what a backtuck is, let's take a look at what a layout is. A layout is a type of backflip, but with a very arched back.
+```{r}
+embed_youtube(id="https://youtube.com/shorts/QXv4M0RKTu4?feature=share")
+```
+# Why do I want to use CNN to classify images (Theory)
+
+Why do we want to employ CNNs for images? As each pixel is a feature, images have high dimensionality, such as width x height x RGB color combination (Red-Green-Blue). In our case we have 4 color combinations, hence our kernels uses (4,4).
+
+Python packages such as Matplotlib can be used to import the image, but it does not see it as an image- it is just an array of numbers. Because color images are stored in 3-dimensional arrays,it may not be equipped to visualise higher dimensions of color images. 
+
+The advantages that CNN has over other image classification algorithms is that it uses minimal preprocessing. CNN can learn the filters that have to be otherwise customised by other algorithms. 
+
+
+# Preparing Dataset 
+I am using 2 sets of 10 pictures (10 backflip and 10 layouts) which would act as one of the keyframes that is supposed to be fed into the RNN. We will not be touching on RNN for this project.
+
+```{r}
+# ssh <- suppressPackageStartupMessages
+# ssh(library(EBImage))
+# ssh(library(keras))
+# ssh(library(foreach))
+# #install.packages("hdf5r")
+# library(hdf5r)
+
+# you may have to setwd everytime you want to read images
+setwd('/Users/Rays/FinalProjectSML/images')
+
+# 7 backflip and 7 layout images in the mytrain list
+mytrain<-c('backtuck1.png','backtuck2.png','backtuck3.png','backtuck4.png','backtuck5.png','backtuck6.png','backtuck7.png','layout1.png','layout2.png','layout3.png','layout4.png','layout5.png','layout6.png','layout7.png')
+
+# 3 backflip and 3 layout images in the mytest list
+mytest<-c('backtuck8.png','backtuck9.png','backtuck10.png','layout8.png','layout9.png','layout10.png')
+
+train <- lapply(mytrain,readImage)
+test <- lapply(mytest, readImage)
+
+```
+Let's take a look at the structure and example of a picture inside the train set
+```{r}
+print(train[[3]])
+str(train[[3]])
+display(train[[3]])
+```
+
+Let's take a look at the pictures inside the training data set. We can see that all of them are screen grabs of still frames within a video.
+```{r}
+for (i in 1:14)plot(train[[i]])
+```
+
+
+We have to use the combine the data set respectively before feeding into the Convolutional Neural Network.
+```{r}
+trainall <- combine(train)
+testall <- combine(test) 
+```
+
+Let's take a look at the structure of the trainall dataset
+```{r}
+str(trainall)
+```
+To fit into our CNN, the dimension has to be `number of images x height x weight x color`, so we use aperm function as taught in class.
+```{r}
+trainall <- aperm(trainall, c(4,1,2,3))
+testall <- aperm(testall, c(4,1,2,3))
+```
+
+Now it is in the right shape
+```{r}
+str(trainall)
+```
+
+Now we have to assign labels to both the train and test set. 0 would be backtuck and 1 would be layout.
+```{r}
+# applying one hot encoding to train and test
+# first 7 (OHE of 0) in labels are layout, next 7 (OHE of 1) in labels are backtuck
+trainlabels <- rep(0:1, each=7)
+testlabels <- rep(0:1, each=3)
+trainy <- to_categorical(trainlabels)
+testy <- to_categorical(testlabels)
+```
+## First Model: Convolution Neural Network with one layer only
+If you are ever running a CNN, do remember to add `layer_flatten` to convert prior shapes within the layers to only 1 layer that will be used for output. 
+```{r}
+model <- keras_model_sequential()
+
+
+model %>% 
+  layer_conv_2d(filters = 32,
+                        kernel_size = c(4,4), # kernel_size of 4 because there are 4 colors in 2 dimensions
+                        activation = "relu",
+                        input_shape = c(1170,2532,4))%>% #input shape is 1170 pixels for width, 2532 pixels for height and 4 color
+
+  layer_flatten()%>%
+  layer_dense(units=2, activation = "sigmoid") %>%
+  # because there are 2 outputs, so we have 2 nodes in the dense layer
+  # instead of relu, we will be using sigmoid as it is bi-categorical (2 categoricals only)
+  compile(loss='binary_crossentropy',
+          optimizer='adam',
+          metrics=c('accuracy'))
+```
+
+
+```{r}
+summary(model)
+```
+# Fit Model
+It takes roughly 30 seconds to run each epoch. I do not suggest that you run it.
+```{r}
+history <- model %>%fit(trainall, 
+                        trainy, 
+                        epoch=60,
+                        batch_size=32,
+                        validation_split=0.2)
+save_model_hdf5(model, "modelcnn1.h5")
+```
+
+Because each Neural Network takes at least half an hour to deploy, i saved them so it is easy to redeploy on different machines. 
+```{r}
+#model <- load_model_hdf5("modelcnn1.h5")
+```
+We can see that accuracy converges towards 1.
+```{r}
+plot(history)
+```
+
+# Model Evaluation
+Accuracy is doing well, but keep in mind the data set only has 14 pictures. 
+```{r}
+#train_evaluate<- evaluate(model, trainall, trainy)
+model %>% evaluate(trainall,trainy)
+```
+Accuracy is 83% for test set. 
+```{r}
+model %>% evaluate(testall,testy)
+```
+
+Let's run a prediction on the trainall dataset.
+```{r}
+pred<-model %>% predict(trainall[1:14,1:1170,1:2532,1:4])
+pred
+```
+Accuracy is 0%. Model is bad. 
+
+Let's run a prediction on the testall dataset.
+```{r}
+pred1<-model %>% predict(testall[1:6,1:1170,1:2532,1:4])
+pred1
+
+```
+Accuracy is 50%, but it may also be the case where the model is not able to distinguish between the two. 
+
+At this point, I don't think the model is able to distinguish between backflip and layout at all. It may be either because the model had not learnt well from the data, or simply because there is not enough data points. We can either build on the CNN model, or add more data points. We shall try the former for this project.
+
+
+
+# CNN with a hidden layer
+Now we add another Convolutional Layer into the Network. This Neural Network will take around 3 hours to run, so i've saved the output of the model. I do not dare run more layers.
+```{r}
+model1 <- keras_model_sequential()
+model1 %>% 
+  layer_conv_2d(filters = 32,
+                        kernel_size = c(4,4), # kernel_size of 4 because there are 4 colors in 2 dimensions
+                        activation = "relu",
+                        input_shape = c(1170,2532,4))%>% #input shape is 1170 pixels for width, 2532 pixels for height and 4 color
+  layer_conv_2d(filters = 32,
+               kernel_size = c(4,4),
+                activation = "relu") %>%
+  layer_flatten()%>%
+  layer_dense(units=2, activation = "sigmoid") %>%
+  compile(loss='binary_crossentropy',
+          optimizer='adam',
+          metrics=c('accuracy'))
+```
+# Summary of model1
+```{r}
+summary(model1 )
+```
+
+# Fit Model
+As the accuracy converges by epoch 20, i set the maximum epoch at 25 as it would take way too long to run on my machine if I had set it at 60. Each epoch takes roughly 300 seconds to run. Do run it if you have GPUs installed.
+```{r}
+history1 <- model1 %>%fit(trainall, 
+                        trainy, 
+                        epoch=25,
+                        batch_size=32,
+                        validation_split=0.2)
+save_model_hdf5(model1, "model1cnn1.h5")
+```
+
+# Plotting History of second model
+I ran this model 3 times, and at the end of 3 times it gave these loss curves and also accuracy graphs.
+```{r}
+#model1 <- load_model_hdf5("model1cnn1.h5")
+plot(history1)
+```
+
+# Model Evaluation
+
+## Evaluating on training data set
+```{r}
+model1 %>% evaluate(trainall,trainy)
+```
+
+## Evaluating on test data set
+Surprisingly, accuracy has decreased!
+```{r}
+model1 %>% evaluate(testall,testy)
+```
+
+Let's run a prediction on the trainall dataset.
+```{r}
+pred1_model1<-model1 %>% predict(trainall[1:10,1:1170,1:2532,1:4])
+pred1_model1
+```
+Accuracy for training set is 0%. This is strange, it predicts the exact opposite. 
+
+Let's run a prediction on the trainall dataset.
+```{r}
+pred2_model1<-model1 %>% predict(testall[1:6,1:1170,1:2532,1:4])
+pred2_model1
+```
+Accuracy for test set is about 60%. But I doubt that it is reflective that the CNN has understood how to classify.
+
+
+To summarise my learnings, having 10 images would suffice as data only when you have a 100x100 pixel. For images with 1170x2532 pixels, having more convolutional layers do not help. I suspect that I need to collate more backflip and layout images.
+It seems to me that the prediction doesn't work. With 1170x2532 pixels, it is no wonder that the CNN cannot discern between a backflip and a layout. What is left for me to do is to increase the sample of photos collected
+
+
+
+# References
+
+I used a tutorial posted on youtube under this link https://youtu.be/iExh0qj2Ouo
